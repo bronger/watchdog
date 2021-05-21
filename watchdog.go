@@ -68,7 +68,7 @@ func longestPrefix(paths []string) string {
 func main() {
 	watcher, err := fsnotify.NewWatcher()
 	check(err)
-	err = filepath.WalkDir(os.Args[1],
+	err = filepath.WalkDir(os.Args[2],
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -95,7 +95,7 @@ func main() {
 		}
 	}()
 
-	executableDir := filepath.Dir(os.Args[0])
+	scriptsDir := filepath.Dir(os.Args[1])
 
 	go func() {
 		for workPackage := range workPackages {
@@ -105,15 +105,15 @@ func main() {
 				for _, workItem := range workPackage {
 					paths = append(paths, workItem.path)
 				}
-				cmd = exec.Command(filepath.Join(executableDir, "bulk_sync"), longestPrefix(paths))
+				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), longestPrefix(paths))
 			} else {
 				workItem := workPackage[0]
 				if workItem.isDir {
-					cmd = exec.Command(filepath.Join(executableDir, "bulk_sync"), workItem.path)
+					cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
 				} else if workItem.eventType == modified {
-					cmd = exec.Command(filepath.Join(executableDir, "copy"), workItem.path)
+					cmd = exec.Command(filepath.Join(scriptsDir, "copy"), workItem.path)
 				} else {
-					cmd = exec.Command(filepath.Join(executableDir, "delete"), workItem.path)
+					cmd = exec.Command(filepath.Join(scriptsDir, "delete"), workItem.path)
 				}
 			}
 			if err := cmd.Run(); err != nil {

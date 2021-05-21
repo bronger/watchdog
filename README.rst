@@ -21,9 +21,9 @@ Call signature
 
 You call the watchdog with::
 
-  watchdog <directory>
+  watchdog <scripts-directory> <watch-directory>
 
-Then, ``<directory>`` and everything beneath is synchronised.
+Then, ``<watch-directory>`` and everything beneath is synchronised.
 
 
 Synchronisation scripts
@@ -33,8 +33,8 @@ Position
 --------
 
 We need the following three programs: ``bulk_sync``, ``copy``, and ``delete``.
-They must be executables in the same directory as the ``watchdog`` itself.
-There are example scripts in this repository.
+They must be executables in ``<scripts-directory>``.  There are example scripts
+in this repository.
 
 The single argument passed to the scripts is relative to the path from which
 the watchdog was called.
