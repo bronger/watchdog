@@ -1,0 +1,3 @@
+#!/bin/sh
+
+ssh myserver rm /my/root/"$1"

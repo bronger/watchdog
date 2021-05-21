@@ -1,0 +1,3 @@
+#!/bin/sh
+
+tar c "$1" | ssh myserver tar --directory /my/root x
