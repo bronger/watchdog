@@ -28,10 +28,15 @@ const (
 	modified = iota
 	deleted
 )
+const (
+	unknown = iota
+	directory
+	file
+)
 
 type workItem struct {
 	path      string
-	isDir     bool
+	nodeType  int
 	eventType int
 }
 
@@ -108,7 +113,7 @@ func main() {
 				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), longestPrefix(paths))
 			} else {
 				workItem := workPackage[0]
-				if workItem.isDir {
+				if workItem.nodeType != file {
 					cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
 				} else if workItem.eventType == modified {
 					cmd = exec.Command(filepath.Join(scriptsDir, "copy"), workItem.path)
@@ -126,25 +131,25 @@ func main() {
 	for {
 		select {
 		case event := <-watcher.Events:
-			info, err := os.Stat(event.Name)
-			if err != nil {
-				logger.Println(err)
-				break
-			}
 			fmt.Println(event.Name)
-			var eventType int
+			newWorkItem := workItem{path: event.Name}
 			if event.Op&fsnotify.Create == fsnotify.Create ||
 				event.Op&fsnotify.Write == fsnotify.Write ||
 				event.Op&fsnotify.Chmod == fsnotify.Chmod {
-				eventType = modified
+				newWorkItem.eventType = modified
+				info, err := os.Stat(event.Name)
+				if err != nil {
+					logger.Println(err)
+					newWorkItem.nodeType = unknown
+				} else if info.IsDir() {
+					newWorkItem.nodeType = directory
+				} else {
+					newWorkItem.nodeType = file
+				}
 			} else {
-				eventType = deleted
+				newWorkItem.eventType = deleted
 			}
-			workItems <- workItem{
-				event.Name,
-				info.IsDir(),
-				eventType,
-			}
+			workItems <- newWorkItem
 
 		case err := <-watcher.Errors:
 			check(err)
