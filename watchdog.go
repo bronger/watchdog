@@ -104,12 +104,14 @@ func main() {
 
 	go func() {
 		for workPackage := range workPackages {
+			logger.Println("WORKER: New work!")
 			var cmd *exec.Cmd
 			if len(workPackage) > 1 {
 				paths := make([]string, len(workPackage))
 				for _, workItem := range workPackage {
 					paths = append(paths, workItem.path)
 				}
+				logger.Println("Calling bulk_sync due to more than one change")
 				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), longestPrefix(paths))
 			} else {
 				workItem := workPackage[0]
@@ -124,6 +126,7 @@ func main() {
 			if err := cmd.Run(); err != nil {
 				logger.Println("External command error: ", err)
 			}
+			logger.Println("WORKER: Finished … waiting for new work")
 		}
 	}()
 
@@ -131,7 +134,7 @@ func main() {
 	for {
 		select {
 		case event := <-watcher.Events:
-			fmt.Println(event.Name)
+			fmt.Println(event)
 			newWorkItem := workItem{path: event.Name}
 			if event.Op&fsnotify.Create == fsnotify.Create ||
 				event.Op&fsnotify.Write == fsnotify.Write ||
