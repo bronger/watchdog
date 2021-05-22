@@ -90,12 +90,16 @@ func main() {
 	workPackages := make(chan []workItem)
 	go func() {
 		currentWorkItems := make([]workItem, 0, 100)
-		for singleWorkItem := range workItems {
-			currentWorkItems = append(currentWorkItems, singleWorkItem)
-			select {
-			case workPackages <- currentWorkItems:
-				currentWorkItems = make([]workItem, 0, 100)
-			default:
+		for {
+			if len(currentWorkItems) > 0 {
+				select {
+				case singleWorkItem := <-workItems:
+					currentWorkItems = append(currentWorkItems, singleWorkItem)
+				case workPackages <- currentWorkItems:
+					currentWorkItems = make([]workItem, 0, 100)
+				}
+			} else {
+				currentWorkItems = append(currentWorkItems, <-workItems)
 			}
 		}
 	}()
