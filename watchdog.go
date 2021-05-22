@@ -119,12 +119,15 @@ func main() {
 				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), longestPrefix(paths))
 			} else {
 				workItem := workPackage[0]
-				if workItem.nodeType != file {
-					cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
-				} else if workItem.eventType == modified {
+				if workItem.eventType == deleted {
+					logger.Println("Calling delete")
+					cmd = exec.Command(filepath.Join(scriptsDir, "delete"), workItem.path)
+				} else if workItem.nodeType == file {
+					logger.Println("Calling copy")
 					cmd = exec.Command(filepath.Join(scriptsDir, "copy"), workItem.path)
 				} else {
-					cmd = exec.Command(filepath.Join(scriptsDir, "delete"), workItem.path)
+					logger.Println("Calling build_sync because non-file was changed")
+					cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
 				}
 			}
 			if err := cmd.Run(); err != nil {
