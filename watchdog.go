@@ -70,7 +70,7 @@ func longestPrefix(paths []string) string {
 	return result
 }
 
-func main() {
+func getWatcher() *fsnotify.Watcher {
 	watcher, err := fsnotify.NewWatcher()
 	check(err)
 	err = filepath.WalkDir(os.Args[2],
@@ -85,59 +85,10 @@ func main() {
 			return nil
 		})
 	check(err)
+	return watcher
+}
 
-	workItems := make(chan workItem)
-	workPackages := make(chan []workItem)
-	go func() {
-		currentWorkItems := make([]workItem, 0, 100)
-		for {
-			if len(currentWorkItems) > 0 {
-				select {
-				case singleWorkItem := <-workItems:
-					currentWorkItems = append(currentWorkItems, singleWorkItem)
-				case workPackages <- currentWorkItems:
-					currentWorkItems = make([]workItem, 0, 100)
-				}
-			} else {
-				currentWorkItems = append(currentWorkItems, <-workItems)
-			}
-		}
-	}()
-
-	scriptsDir := os.Args[1]
-
-	go func() {
-		for workPackage := range workPackages {
-			logger.Println("WORKER: New work!")
-			var cmd *exec.Cmd
-			if len(workPackage) > 1 {
-				paths := make([]string, len(workPackage))
-				for _, workItem := range workPackage {
-					paths = append(paths, workItem.path)
-				}
-				logger.Println("Calling bulk_sync due to more than one change")
-				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), longestPrefix(paths))
-			} else {
-				workItem := workPackage[0]
-				if workItem.eventType == deleted {
-					logger.Println("Calling delete")
-					cmd = exec.Command(filepath.Join(scriptsDir, "delete"), workItem.path)
-				} else if workItem.nodeType == file {
-					logger.Println("Calling copy")
-					cmd = exec.Command(filepath.Join(scriptsDir, "copy"), workItem.path)
-				} else {
-					logger.Println("Calling build_sync because non-file was changed")
-					cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
-				}
-			}
-			if err := cmd.Run(); err != nil {
-				logger.Println("External command error: ", err)
-			}
-			logger.Println("WORKER: Finished … waiting for new work")
-		}
-	}()
-
-	logger.Println("Watching …")
+func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem) {
 	for {
 		select {
 		case event := <-watcher.Events:
@@ -165,4 +116,62 @@ func main() {
 			check(err)
 		}
 	}
+}
+
+func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
+	currentWorkItems := make([]workItem, 0, 100)
+	for {
+		if len(currentWorkItems) > 0 {
+			select {
+			case singleWorkItem := <-workItems:
+				currentWorkItems = append(currentWorkItems, singleWorkItem)
+			case workPackages <- currentWorkItems:
+				currentWorkItems = make([]workItem, 0, 100)
+			}
+		} else {
+			currentWorkItems = append(currentWorkItems, <-workItems)
+		}
+	}
+}
+
+func worker(workPackages <-chan []workItem) {
+	scriptsDir := os.Args[1]
+	for workPackage := range workPackages {
+		logger.Println("WORKER: New work!")
+		var cmd *exec.Cmd
+		if len(workPackage) > 1 {
+			paths := make([]string, len(workPackage))
+			for _, workItem := range workPackage {
+				paths = append(paths, workItem.path)
+			}
+			logger.Println("Calling bulk_sync due to more than one change")
+			cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), longestPrefix(paths))
+		} else {
+			workItem := workPackage[0]
+			if workItem.eventType == deleted {
+				logger.Println("Calling delete")
+				cmd = exec.Command(filepath.Join(scriptsDir, "delete"), workItem.path)
+			} else if workItem.nodeType == file {
+				logger.Println("Calling copy")
+				cmd = exec.Command(filepath.Join(scriptsDir, "copy"), workItem.path)
+			} else {
+				logger.Println("Calling build_sync because non-file was changed")
+				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
+			}
+		}
+		if err := cmd.Run(); err != nil {
+			logger.Println("External command error: ", err)
+		}
+		logger.Println("WORKER: Finished … waiting for new work")
+	}
+}
+
+func main() {
+	watcher := getWatcher()
+	workItems := make(chan workItem)
+	workPackages := make(chan []workItem)
+	go workMarshaller(workItems, workPackages)
+	go worker(workPackages)
+	logger.Println("Watching …")
+	eventsWatcher(watcher, workItems)
 }
