@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -120,16 +121,34 @@ func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem) {
 
 func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
 	currentWorkItems := make([]workItem, 0, 100)
+	var timer *time.Timer
 	for {
 		if len(currentWorkItems) > 0 {
-			select {
-			case singleWorkItem := <-workItems:
-				currentWorkItems = append(currentWorkItems, singleWorkItem)
-			case workPackages <- currentWorkItems:
-				currentWorkItems = make([]workItem, 0, 100)
+			if timer == nil {
+				select {
+				case workPackages <- currentWorkItems:
+					currentWorkItems = make([]workItem, 0, 100)
+				case singleWorkItem := <-workItems:
+					currentWorkItems = append(currentWorkItems, singleWorkItem)
+					timer = time.NewTimer(10 * time.Millisecond)
+				}
+			} else {
+				select {
+				case <-timer.C:
+					timer = nil
+					select {
+					case workPackages <- currentWorkItems:
+						currentWorkItems = make([]workItem, 0, 100)
+					default:
+					}
+				case singleWorkItem := <-workItems:
+					currentWorkItems = append(currentWorkItems, singleWorkItem)
+					timer = time.NewTimer(10 * time.Millisecond)
+				}
 			}
 		} else {
 			currentWorkItems = append(currentWorkItems, <-workItems)
+			timer = time.NewTimer(10 * time.Millisecond)
 		}
 	}
 }
