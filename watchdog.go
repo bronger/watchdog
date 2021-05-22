@@ -95,7 +95,7 @@ func main() {
 		}
 	}()
 
-	scriptsDir := filepath.Dir(os.Args[1])
+	scriptsDir := os.Args[1]
 
 	go func() {
 		for workPackage := range workPackages {
