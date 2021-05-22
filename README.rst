@@ -57,4 +57,4 @@ This copy its argument – a file – to the remote.
 ``delete``
 ----------
 
-This deletes its argument – a file – from the remote.
+This deletes its argument – which may be a file or a directory – from the remote.
