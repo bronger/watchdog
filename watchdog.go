@@ -3,14 +3,17 @@ package main
 import (
 	"fmt"
 	"io/fs"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"gopkg.in/yaml.v2"
 )
 
 var logger *log.Logger
@@ -21,8 +24,37 @@ func check(e error) {
 	}
 }
 
+var excludeRegexps []*regexp.Regexp
+
+func isExcluded(path string) bool {
+	for _, regexp := range excludeRegexps {
+		if regexp.MatchString(path) {
+			return true
+		}
+	}
+	return false
+}
+
+func readConfiguration() {
+	var configuration struct {
+		Excludes []string
+	}
+	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
+	check(err)
+	err = yaml.Unmarshal(data, &configuration)
+	if err != nil {
+		logger.Panic("invalid configuration.yaml")
+	}
+	for _, pattern := range configuration.Excludes {
+		excludeRegexp, err := regexp.Compile(pattern)
+		check(err)
+		excludeRegexps = append(excludeRegexps, excludeRegexp)
+	}
+}
+
 func init() {
 	logger = log.New(os.Stderr, "", 0)
+	readConfiguration()
 }
 
 const (
@@ -90,6 +122,10 @@ func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem) {
 	for {
 		select {
 		case event := <-watcher.Events:
+			if isExcluded(event.Name) {
+				logger.Println("Ignored", event.Name)
+				break
+			}
 			fmt.Println(event)
 			newWorkItem := workItem{path: event.Name}
 			if event.Op&fsnotify.Create == fsnotify.Create ||
