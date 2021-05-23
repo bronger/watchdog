@@ -174,7 +174,7 @@ func worker(workPackages <-chan []workItem) {
 		logger.Println("WORKER: New work!")
 		var cmd *exec.Cmd
 		if len(workPackage) > 1 {
-			paths := make([]string, len(workPackage))
+			paths := make([]string, 0, len(workPackage))
 			for _, workItem := range workPackage {
 				paths = append(paths, workItem.path)
 			}
