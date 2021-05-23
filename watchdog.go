@@ -71,10 +71,8 @@ func longestPrefix(paths []string) string {
 	return result
 }
 
-func getWatcher() *fsnotify.Watcher {
-	watcher, err := fsnotify.NewWatcher()
-	check(err)
-	err = filepath.WalkDir(os.Args[2],
+func addWatches(watcher *fsnotify.Watcher) {
+	err := filepath.WalkDir(os.Args[2],
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -86,7 +84,6 @@ func getWatcher() *fsnotify.Watcher {
 			return nil
 		})
 	check(err)
-	return watcher
 }
 
 func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem) {
@@ -186,11 +183,15 @@ func worker(workPackages <-chan []workItem) {
 }
 
 func main() {
-	watcher := getWatcher()
 	workItems := make(chan workItem)
 	workPackages := make(chan []workItem)
 	go workMarshaller(workItems, workPackages)
 	go worker(workPackages)
+	watcher, err := fsnotify.NewWatcher()
+	check(err)
+	done := make(chan bool)
+	go eventsWatcher(watcher, workItems)
 	logger.Println("Watching …")
-	eventsWatcher(watcher, workItems)
+	addWatches(watcher)
+	<-done
 }
