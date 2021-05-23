@@ -116,6 +116,24 @@ func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem) {
 	}
 }
 
+func appendWorkItem(workItems []workItem, workItem workItem) []workItem {
+	for i := range workItems {
+		i = len(workItems) - 1 - i
+		item := workItems[i]
+		if item == workItem {
+			logger.Println("appendWorkItem: Ignored duplicate")
+			return workItems
+		}
+		if item.path == workItem.path && workItem.eventType == deleted && item.eventType == modified {
+			logger.Println("appendWorkItem: \"modified\" replaced with \"deleted\"")
+			workItems[i] = workItem
+			return workItems
+		}
+	}
+	logger.Println("appendWorkItem: Appended new work item", workItem)
+	return append(workItems, workItem)
+}
+
 func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
 	currentWorkItems := make([]workItem, 0, 100)
 	var timer *time.Timer
@@ -126,7 +144,7 @@ func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
 				case workPackages <- currentWorkItems:
 					currentWorkItems = make([]workItem, 0, 100)
 				case singleWorkItem := <-workItems:
-					currentWorkItems = append(currentWorkItems, singleWorkItem)
+					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
 					timer = time.NewTimer(10 * time.Millisecond)
 				}
 			} else {
@@ -139,12 +157,12 @@ func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
 					default:
 					}
 				case singleWorkItem := <-workItems:
-					currentWorkItems = append(currentWorkItems, singleWorkItem)
+					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
 					timer = time.NewTimer(10 * time.Millisecond)
 				}
 			}
 		} else {
-			currentWorkItems = append(currentWorkItems, <-workItems)
+			currentWorkItems = appendWorkItem(currentWorkItems, <-workItems)
 			timer = time.NewTimer(10 * time.Millisecond)
 		}
 	}
