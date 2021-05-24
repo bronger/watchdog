@@ -53,7 +53,7 @@ func readConfiguration() {
 	check(err)
 	err = yaml.Unmarshal(data, &configuration)
 	if err != nil {
-		logger.Panic("invalid configuration.yaml")
+		logger.Panic("invalid configuration.yaml", err)
 	}
 	watchedDir := watchedDir{
 		root: os.Args[2],
@@ -259,7 +259,7 @@ func main() {
 	check(err)
 	done := make(chan bool)
 	go eventsWatcher(watcher, workItems)
-	logger.Println("Watching …")
+	logger.Println("Watching", watchedDirs[0].root, "…")
 	addWatches(watcher)
 	<-done
 }
