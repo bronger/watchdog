@@ -21,9 +21,28 @@ Call signature
 
 You call the watchdog with::
 
-  watchdog <scripts-directory> <watch-directory>
+  watchdog <configuration-directory>
 
-Then, ``<watch-directory>`` and everything beneath is synchronised.
+
+Configuration file
+==================
+
+The configuration directory must contain a file ``confguration.yaml`` which may
+look like this:
+
+.. code-block:: yaml
+
+  current dir: /home/bronger
+  watched dirs:
+    - root: Mail
+      excludes:
+        - ^Mail/\.#active
+        - ^Mail/active
+        - /\.overview
+        - /\.#\.overview
+
+``current dir`` should be an absolute path.  Each ``root`` is relative to
+``current dir``.  The ``excludes`` are Go-style (non-POSIX) regular expressions.
 
 
 Synchronisation scripts
@@ -33,11 +52,11 @@ Position
 --------
 
 We need the following three programs: ``bulk_sync``, ``copy``, and ``delete``.
-They must be executables in ``<scripts-directory>``.  There are example scripts
-in this repository.
+They must be executables in ``<configuration-directory>``.  There are example
+scripts in this repository.
 
-The single argument passed to the scripts is relative to the path from which
-the watchdog was called.
+The single argument passed to the scripts is relative to ``current dir`` from
+the configuration.
 
 
 ``bulk_rsync``
