@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ func isExcluded(path string, excludeRegexps []*regexp.Regexp) bool {
 
 type watchedDir struct {
 	root           string
+	gatheringTime  time.Duration
 	workItems      chan workItem
 	workPackages   chan []workItem
 	watcher        *fsnotify.Watcher
@@ -47,8 +49,9 @@ func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 	var configuration struct {
 		CurrentDir  string `yaml:"current dir"`
 		WatchedDirs []struct {
-			Root     string
-			Excludes []string
+			Root          string
+			GatheringTime string `yaml:"gathering ms"`
+			Excludes      []string
 		} `yaml:"watched dirs"`
 	}
 	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
@@ -62,6 +65,13 @@ func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 			root:         configItem.Root,
 			workItems:    make(chan workItem),
 			workPackages: make(chan []workItem),
+		}
+		if configItem.GatheringTime == "" {
+			watchedDir.gatheringTime = 10 * time.Millisecond
+		} else {
+			ms, err := strconv.Atoi(configItem.GatheringTime)
+			watchedDir.gatheringTime = time.Duration(ms) * time.Millisecond
+			check(err)
 		}
 		for _, pattern := range configItem.Excludes {
 			excludeRegexp, err := regexp.Compile(pattern)
@@ -190,7 +200,7 @@ func appendWorkItem(workItems []workItem, workItem workItem) []workItem {
 	return append(workItems, workItem)
 }
 
-func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
+func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem, gatheringTime time.Duration) {
 	currentWorkItems := make([]workItem, 0, 100)
 	var timer *time.Timer
 	for {
@@ -201,7 +211,7 @@ func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
 					currentWorkItems = make([]workItem, 0, 100)
 				case singleWorkItem := <-workItems:
 					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
-					timer = time.NewTimer(10 * time.Millisecond)
+					timer = time.NewTimer(gatheringTime)
 				}
 			} else {
 				select {
@@ -214,12 +224,12 @@ func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem) {
 					}
 				case singleWorkItem := <-workItems:
 					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
-					timer = time.NewTimer(10 * time.Millisecond)
+					timer = time.NewTimer(gatheringTime)
 				}
 			}
 		} else {
 			currentWorkItems = appendWorkItem(currentWorkItems, <-workItems)
-			timer = time.NewTimer(10 * time.Millisecond)
+			timer = time.NewTimer(gatheringTime)
 		}
 	}
 }
@@ -263,7 +273,7 @@ func main() {
 	err = os.Chdir(currentDir)
 	check(err)
 	for _, watchedDir := range watchedDirs {
-		go workMarshaller(watchedDir.workItems, watchedDir.workPackages)
+		go workMarshaller(watchedDir.workItems, watchedDir.workPackages, watchedDir.gatheringTime)
 		go worker(watchedDir.workPackages)
 		watchedDir.watcher, err = fsnotify.NewWatcher()
 		check(err)
