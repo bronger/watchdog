@@ -54,7 +54,7 @@ func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
 	check(err)
 	err = yaml.Unmarshal(data, &configuration)
-	if err != nil {
+	if err != nil || configuration.CurrentDir == "" || len(configuration.WatchedDirs) == 0 {
 		logger.Panic("invalid configuration.yaml", err)
 	}
 	for _, configItem := range configuration.WatchedDirs {
