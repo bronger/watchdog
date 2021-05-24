@@ -43,10 +43,13 @@ type watchedDir struct {
 	excludeRegexps []*regexp.Regexp
 }
 
-func readConfiguration() (watchedDirs []watchedDir) {
-	var configuration []struct {
-		Root     string
-		Excludes []string
+func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
+	var configuration struct {
+		CurrentDir  string `yaml:"current dir"`
+		WatchedDirs []struct {
+			Root     string
+			Excludes []string
+		} `yaml:"watched dirs"`
 	}
 	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
 	check(err)
@@ -54,7 +57,7 @@ func readConfiguration() (watchedDirs []watchedDir) {
 	if err != nil {
 		logger.Panic("invalid configuration.yaml", err)
 	}
-	for _, configItem := range configuration {
+	for _, configItem := range configuration.WatchedDirs {
 		watchedDir := watchedDir{
 			root:         configItem.Root,
 			workItems:    make(chan workItem),
@@ -67,7 +70,7 @@ func readConfiguration() (watchedDirs []watchedDir) {
 		}
 		watchedDirs = append(watchedDirs, watchedDir)
 	}
-	return watchedDirs
+	return watchedDirs, configuration.CurrentDir
 }
 
 func init() {
@@ -256,7 +259,10 @@ func worker(workPackages <-chan []workItem) {
 func main() {
 	done := make(chan bool)
 	var err error
-	for _, watchedDir := range readConfiguration() {
+	watchedDirs, currentDir := readConfiguration()
+	err = os.Chdir(currentDir)
+	check(err)
+	for _, watchedDir := range watchedDirs {
 		go workMarshaller(watchedDir.workItems, watchedDir.workPackages)
 		go worker(watchedDir.workPackages)
 		watchedDir.watcher, err = fsnotify.NewWatcher()
