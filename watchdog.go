@@ -25,8 +25,8 @@ func check(e error) {
 	}
 }
 
-func isExcluded(path string) bool {
-	for _, regexp := range watchedDirs[0].excludeRegexps {
+func isExcluded(path string, excludeRegexps []*regexp.Regexp) bool {
+	for _, regexp := range excludeRegexps {
 		if regexp.MatchString(path) {
 			return true
 		}
@@ -43,10 +43,9 @@ type watchedDir struct {
 	excludeRegexps []*regexp.Regexp
 }
 
-var watchedDirs []watchedDir
-
-func readConfiguration() {
+func readConfiguration() (watchedDirs []watchedDir) {
 	var configuration []struct {
+		Root     string
 		Excludes []string
 	}
 	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
@@ -55,20 +54,24 @@ func readConfiguration() {
 	if err != nil {
 		logger.Panic("invalid configuration.yaml", err)
 	}
-	watchedDir := watchedDir{
-		root: os.Args[2],
+	for _, configItem := range configuration {
+		watchedDir := watchedDir{
+			root:         configItem.Root,
+			workItems:    make(chan workItem),
+			workPackages: make(chan []workItem),
+		}
+		for _, pattern := range configItem.Excludes {
+			excludeRegexp, err := regexp.Compile(pattern)
+			check(err)
+			watchedDir.excludeRegexps = append(watchedDir.excludeRegexps, excludeRegexp)
+		}
+		watchedDirs = append(watchedDirs, watchedDir)
 	}
-	for _, pattern := range configuration[0].Excludes {
-		excludeRegexp, err := regexp.Compile(pattern)
-		check(err)
-		watchedDir.excludeRegexps = append(watchedDir.excludeRegexps, excludeRegexp)
-	}
-	watchedDirs = append(watchedDirs, watchedDir)
+	return watchedDirs
 }
 
 func init() {
 	logger = log.New(os.Stderr, "", 0)
-	readConfiguration()
 }
 
 const (
@@ -117,8 +120,8 @@ func longestPrefix(paths []string) string {
 	return result
 }
 
-func addWatches(watcher *fsnotify.Watcher) {
-	err := filepath.WalkDir(watchedDirs[0].root,
+func addWatches(watcher *fsnotify.Watcher, root string) {
+	err := filepath.WalkDir(root,
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -132,11 +135,11 @@ func addWatches(watcher *fsnotify.Watcher) {
 	check(err)
 }
 
-func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem) {
+func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem, excludeRegexps []*regexp.Regexp) {
 	for {
 		select {
 		case event := <-watcher.Events:
-			if isExcluded(event.Name) {
+			if isExcluded(event.Name, excludeRegexps) {
 				logger.Println("Ignored", event.Name)
 				break
 			}
@@ -251,15 +254,16 @@ func worker(workPackages <-chan []workItem) {
 }
 
 func main() {
-	workItems := make(chan workItem)
-	workPackages := make(chan []workItem)
-	go workMarshaller(workItems, workPackages)
-	go worker(workPackages)
-	watcher, err := fsnotify.NewWatcher()
-	check(err)
 	done := make(chan bool)
-	go eventsWatcher(watcher, workItems)
-	logger.Println("Watching", watchedDirs[0].root, "…")
-	addWatches(watcher)
+	var err error
+	for _, watchedDir := range readConfiguration() {
+		go workMarshaller(watchedDir.workItems, watchedDir.workPackages)
+		go worker(watchedDir.workPackages)
+		watchedDir.watcher, err = fsnotify.NewWatcher()
+		check(err)
+		go eventsWatcher(watchedDir.watcher, watchedDir.workItems, watchedDir.excludeRegexps)
+		logger.Println("Watching", watchedDir.root, "…")
+		addWatches(watchedDir.watcher, watchedDir.root)
+	}
 	<-done
 }
