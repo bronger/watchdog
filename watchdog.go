@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -24,10 +25,8 @@ func check(e error) {
 	}
 }
 
-var excludeRegexps []*regexp.Regexp
-
 func isExcluded(path string) bool {
-	for _, regexp := range excludeRegexps {
+	for _, regexp := range watchedDirs[0].excludeRegexps {
 		if regexp.MatchString(path) {
 			return true
 		}
@@ -35,8 +34,19 @@ func isExcluded(path string) bool {
 	return false
 }
 
+type watchedDir struct {
+	root           string
+	workItems      chan workItem
+	workPackages   chan []workItem
+	watcher        *fsnotify.Watcher
+	wg             sync.WaitGroup
+	excludeRegexps []*regexp.Regexp
+}
+
+var watchedDirs []watchedDir
+
 func readConfiguration() {
-	var configuration struct {
+	var configuration []struct {
 		Excludes []string
 	}
 	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
@@ -45,11 +55,15 @@ func readConfiguration() {
 	if err != nil {
 		logger.Panic("invalid configuration.yaml")
 	}
-	for _, pattern := range configuration.Excludes {
+	watchedDir := watchedDir{
+		root: os.Args[2],
+	}
+	for _, pattern := range configuration[0].Excludes {
 		excludeRegexp, err := regexp.Compile(pattern)
 		check(err)
-		excludeRegexps = append(excludeRegexps, excludeRegexp)
+		watchedDir.excludeRegexps = append(watchedDir.excludeRegexps, excludeRegexp)
 	}
+	watchedDirs = append(watchedDirs, watchedDir)
 }
 
 func init() {
@@ -104,7 +118,7 @@ func longestPrefix(paths []string) string {
 }
 
 func addWatches(watcher *fsnotify.Watcher) {
-	err := filepath.WalkDir(os.Args[2],
+	err := filepath.WalkDir(watchedDirs[0].root,
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
