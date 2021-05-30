@@ -35,7 +35,7 @@ look like this:
   current dir: /home/bronger
   watched dirs:
     - root: Mail
-      gathering ms: 100
+      agglomeration ms: 100
       excludes:
         - ^Mail/\.#active
         - ^Mail/active
@@ -45,9 +45,9 @@ look like this:
 ``current dir`` should be an absolute path.  Each ``root`` is relative to
 ``current dir``.  The ``excludes`` are Go-style (non-POSIX) regular expressions.
 
-``gathering ms`` is 10 by default and denotes the milliseconds to wait after a
-change for further changes.  Those are then processed with a minimal number of
-calls of the synchronisation scripts.
+``agglomeration ms`` is 10 by default and denotes the milliseconds to wait
+after a change for further changes.  Those are then processed with a minimal
+number of calls of the synchronisation scripts.
 
 
 Synchronisation scripts

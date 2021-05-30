@@ -38,22 +38,22 @@ func isExcluded(path string, excludeRegexps []*regexp.Regexp) bool {
 }
 
 type watchedDir struct {
-	root           string
-	gatheringTime  time.Duration
-	workItems      chan workItem
-	workPackages   chan []workItem
-	watcher        *fsnotify.Watcher
-	wg             sync.WaitGroup
-	excludeRegexps []*regexp.Regexp
+	root              string
+	agglomerationTime time.Duration
+	workItems         chan workItem
+	workPackages      chan []workItem
+	watcher           *fsnotify.Watcher
+	wg                sync.WaitGroup
+	excludeRegexps    []*regexp.Regexp
 }
 
 func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 	var configuration struct {
 		CurrentDir  string `yaml:"current dir"`
 		WatchedDirs []struct {
-			Root          string
-			GatheringTime string `yaml:"gathering ms"`
-			Excludes      []string
+			Root              string
+			AgglomerationTime string `yaml:"agglomeration ms"`
+			Excludes          []string
 		} `yaml:"watched dirs"`
 	}
 	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
@@ -68,11 +68,11 @@ func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 			workItems:    make(chan workItem),
 			workPackages: make(chan []workItem),
 		}
-		if configItem.GatheringTime == "" {
-			watchedDir.gatheringTime = 10 * time.Millisecond
+		if configItem.AgglomerationTime == "" {
+			watchedDir.agglomerationTime = 10 * time.Millisecond
 		} else {
-			ms, err := strconv.Atoi(configItem.GatheringTime)
-			watchedDir.gatheringTime = time.Duration(ms) * time.Millisecond
+			ms, err := strconv.Atoi(configItem.AgglomerationTime)
+			watchedDir.agglomerationTime = time.Duration(ms) * time.Millisecond
 			check(err)
 		}
 		for _, pattern := range configItem.Excludes {
@@ -209,7 +209,7 @@ func appendWorkItem(workItems []workItem, workItem workItem) []workItem {
 }
 
 func workMarshaller(ctx context.Context,
-	workItems <-chan workItem, workPackages chan<- []workItem, gatheringTime time.Duration) {
+	workItems <-chan workItem, workPackages chan<- []workItem, agglomerationTime time.Duration) {
 	logger.Println("workMashaller: Starting")
 	defer logger.Println("workMashaller: Shutting down")
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
@@ -224,7 +224,7 @@ func workMarshaller(ctx context.Context,
 					currentWorkItems = make([]workItem, 0, 100)
 				case singleWorkItem := <-workItems:
 					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
-					timer = time.NewTimer(gatheringTime)
+					timer = time.NewTimer(agglomerationTime)
 				case <-ctx.Done():
 					return
 				}
@@ -239,7 +239,7 @@ func workMarshaller(ctx context.Context,
 					}
 				case singleWorkItem := <-workItems:
 					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
-					timer = time.NewTimer(gatheringTime)
+					timer = time.NewTimer(agglomerationTime)
 				case <-ctx.Done():
 					return
 				}
@@ -248,7 +248,7 @@ func workMarshaller(ctx context.Context,
 			select {
 			case singleWorkItem := <-workItems:
 				currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
-				timer = time.NewTimer(gatheringTime)
+				timer = time.NewTimer(agglomerationTime)
 			case <-ctx.Done():
 				return
 			}
@@ -317,7 +317,7 @@ func main() {
 	check(err)
 	for _, watchedDir := range watchedDirs {
 		wg.Add(3)
-		go workMarshaller(ctx, watchedDir.workItems, watchedDir.workPackages, watchedDir.gatheringTime)
+		go workMarshaller(ctx, watchedDir.workItems, watchedDir.workPackages, watchedDir.agglomerationTime)
 		go worker(ctx, watchedDir.workPackages)
 		watchedDir.watcher, err = fsnotify.NewWatcher()
 		check(err)
