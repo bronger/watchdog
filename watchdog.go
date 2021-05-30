@@ -299,18 +299,23 @@ const wgKey key = 0
 
 func main() {
 	defer logger.Println("Exiting gracefully.")
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM)
-	var wg sync.WaitGroup
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx = context.WithValue(ctx, wgKey, &wg)
+
+	var wg sync.WaitGroup
 	defer wg.Wait()
+	ctx = context.WithValue(ctx, wgKey, &wg)
+
 	go func() {
 		<-sigs
 		logger.Println("Received TERM")
 		cancel()
 	}()
+
 	var err error
 	watchedDirs, currentDir := readConfiguration()
 	err = os.Chdir(currentDir)
