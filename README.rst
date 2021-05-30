@@ -43,7 +43,8 @@ look like this:
         - /\.#\.overview
 
 ``current dir`` should be an absolute path.  Each ``root`` is relative to
-``current dir``.  The ``excludes`` are Go-style (non-POSIX) regular expressions.
+``current dir``.  The ``excludes`` are Go-style (non-POSIX) regular
+expressions.
 
 ``agglomeration ms`` is 10 by default and denotes the milliseconds to wait
 after a change for further changes.  Those are then processed with a minimal
