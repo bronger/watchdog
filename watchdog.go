@@ -183,6 +183,8 @@ func eventsWatcher(ctx context.Context,
 
 		case err := <-watcher.Errors:
 			check(err)
+		case <-ctx.Done():
+			return
 		}
 	}
 }
@@ -208,6 +210,7 @@ func appendWorkItem(workItems []workItem, workItem workItem) []workItem {
 func workMarshaller(ctx context.Context,
 	workItems <-chan workItem, workPackages chan<- []workItem, gatheringTime time.Duration) {
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
+	defer close(workPackages)
 	currentWorkItems := make([]workItem, 0, 100)
 	var timer *time.Timer
 	for {
@@ -219,6 +222,8 @@ func workMarshaller(ctx context.Context,
 				case singleWorkItem := <-workItems:
 					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
 					timer = time.NewTimer(gatheringTime)
+				case <-ctx.Done():
+					return
 				}
 			} else {
 				select {
@@ -232,11 +237,18 @@ func workMarshaller(ctx context.Context,
 				case singleWorkItem := <-workItems:
 					currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
 					timer = time.NewTimer(gatheringTime)
+				case <-ctx.Done():
+					return
 				}
 			}
 		} else {
-			currentWorkItems = appendWorkItem(currentWorkItems, <-workItems)
-			timer = time.NewTimer(gatheringTime)
+			select {
+			case singleWorkItem := <-workItems:
+				currentWorkItems = appendWorkItem(currentWorkItems, singleWorkItem)
+				timer = time.NewTimer(gatheringTime)
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
 }
@@ -267,7 +279,9 @@ func worker(ctx context.Context, workPackages <-chan []workItem) {
 				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
 			}
 		}
-		if err := cmd.Run(); err != nil {
+		err := cmd.Start()
+		check(err)
+		if err := waitOrStop(ctx, cmd, syscall.SIGTERM, 0); err != nil {
 			logger.Println("External command error: ", err)
 		}
 		logger.Println("WORKER: Finished … waiting for new work")
@@ -279,6 +293,7 @@ type key int
 const wgKey key = 0
 
 func main() {
+	defer logger.Println("Exiting gracefully.")
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM)
 	var wg sync.WaitGroup
