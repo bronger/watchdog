@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"io/ioutil"
 	"log"
@@ -153,6 +152,8 @@ func addWatches(watcher *fsnotify.Watcher, root string) {
 
 func eventsWatcher(ctx context.Context,
 	watcher *fsnotify.Watcher, workItems chan<- workItem, excludeRegexps []*regexp.Regexp) {
+	logger.Println("eventsWatcher: Starting")
+	defer logger.Println("eventsWatcher: Shutting down")
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	for {
 		select {
@@ -161,7 +162,7 @@ func eventsWatcher(ctx context.Context,
 				logger.Println("Ignored", event.Name)
 				break
 			}
-			fmt.Println(event)
+			logger.Println(event)
 			newWorkItem := workItem{path: event.Name}
 			if event.Op&fsnotify.Create == fsnotify.Create ||
 				event.Op&fsnotify.Write == fsnotify.Write ||
@@ -209,6 +210,8 @@ func appendWorkItem(workItems []workItem, workItem workItem) []workItem {
 
 func workMarshaller(ctx context.Context,
 	workItems <-chan workItem, workPackages chan<- []workItem, gatheringTime time.Duration) {
+	logger.Println("workMashaller: Starting")
+	defer logger.Println("workMashaller: Shutting down")
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	defer close(workPackages)
 	currentWorkItems := make([]workItem, 0, 100)
@@ -254,6 +257,8 @@ func workMarshaller(ctx context.Context,
 }
 
 func worker(ctx context.Context, workPackages <-chan []workItem) {
+	logger.Println("worker: Starting")
+	defer logger.Println("worker: Shutting down")
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	scriptsDir := os.Args[1]
 	for workPackage := range workPackages {
