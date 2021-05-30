@@ -22,12 +22,6 @@ import (
 
 var logger *log.Logger
 
-func check(e error) {
-	if e != nil {
-		logger.Panic(e)
-	}
-}
-
 func isExcluded(path string, excludeRegexps []*regexp.Regexp) bool {
 	for _, regexp := range excludeRegexps {
 		if regexp.MatchString(path) {
@@ -56,11 +50,13 @@ func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 			Excludes          []string
 		} `yaml:"watched dirs"`
 	}
-	data, err := ioutil.ReadFile(filepath.Join(os.Args[1], "configuration.yaml"))
-	check(err)
-	err = yaml.Unmarshal(data, &configuration)
-	if err != nil || configuration.CurrentDir == "" || len(configuration.WatchedDirs) == 0 {
-		logger.Panic("invalid configuration.yaml", err)
+	configurationFilePath := filepath.Join(os.Args[1], "configuration.yaml")
+	if data, err := ioutil.ReadFile(configurationFilePath); err != nil {
+		logger.Panicf("Configuration file %v could not be read: %v", configurationFilePath, err)
+	} else if err := yaml.Unmarshal(data, &configuration); err != nil ||
+		configuration.CurrentDir == "" ||
+		len(configuration.WatchedDirs) == 0 {
+		logger.Panicf("Invalid configuration file %v: %v", configurationFilePath, err)
 	}
 	for _, configItem := range configuration.WatchedDirs {
 		watchedDir := watchedDir{
@@ -70,15 +66,19 @@ func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 		}
 		if configItem.AgglomerationTime == "" {
 			watchedDir.agglomerationTime = 10 * time.Millisecond
+		} else if ms, err := strconv.Atoi(configItem.AgglomerationTime); err != nil {
+			logger.Panicf("Invalid configuration file %v: Agglomeration time %v is not an integer",
+				configurationFilePath, configItem.AgglomerationTime)
 		} else {
-			ms, err := strconv.Atoi(configItem.AgglomerationTime)
 			watchedDir.agglomerationTime = time.Duration(ms) * time.Millisecond
-			check(err)
 		}
 		for _, pattern := range configItem.Excludes {
-			excludeRegexp, err := regexp.Compile(pattern)
-			check(err)
-			watchedDir.excludeRegexps = append(watchedDir.excludeRegexps, excludeRegexp)
+			if excludeRegexp, err := regexp.Compile(pattern); err != nil {
+				logger.Panicf("Invalid configuration file %v: Regexp %v is invalid",
+					configurationFilePath, pattern)
+			} else {
+				watchedDir.excludeRegexps = append(watchedDir.excludeRegexps, excludeRegexp)
+			}
 		}
 		watchedDirs = append(watchedDirs, watchedDir)
 	}
@@ -136,18 +136,20 @@ func longestPrefix(paths []string) string {
 }
 
 func addWatches(watcher *fsnotify.Watcher, root string) {
-	err := filepath.WalkDir(root,
+	if err := filepath.WalkDir(root,
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 			if d.IsDir() {
-				err = watcher.Add(path)
-				check(err)
+				if err := watcher.Add(path); err != nil {
+					logger.Printf("Could not add watch of directory %v: %v; ignoring", root, err)
+				}
 			}
 			return nil
-		})
-	check(err)
+		}); err != nil {
+		logger.Printf("Could not walk through directory %v: %v; ignoring", root, err)
+	}
 }
 
 func eventsWatcher(ctx context.Context,
@@ -180,7 +182,7 @@ func eventsWatcher(ctx context.Context,
 			workItems <- newWorkItem
 
 		case err := <-watcher.Errors:
-			check(err)
+			logger.Printf("eventsWatcher: Error %v (ignoring)", err)
 		case <-ctx.Done():
 			return
 		}
@@ -272,10 +274,10 @@ func worker(ctx context.Context, workPackages <-chan []workItem) {
 				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
 			}
 		}
-		err := cmd.Start()
-		check(err)
-		if err := waitOrStop(ctx, cmd, syscall.SIGTERM, 0); err != nil {
-			logger.Println("External command error: ", err)
+		if err := cmd.Start(); err != nil {
+			logger.Println("Could not start external command:", err)
+		} else if err := waitOrStop(ctx, cmd, syscall.SIGTERM, 0); err != nil {
+			logger.Println("External command error:", err)
 		}
 	}
 }
@@ -302,16 +304,18 @@ func main() {
 		cancel()
 	}()
 
-	var err error
 	watchedDirs, currentDir := readConfiguration()
-	err = os.Chdir(currentDir)
-	check(err)
+	if err := os.Chdir(currentDir); err != nil {
+		logger.Panicf("Could not set current working directory to %v", currentDir)
+	}
 	for _, watchedDir := range watchedDirs {
 		wg.Add(3)
 		go workMarshaller(ctx, watchedDir.workItems, watchedDir.workPackages, watchedDir.agglomerationTime)
 		go worker(ctx, watchedDir.workPackages)
-		watchedDir.watcher, err = fsnotify.NewWatcher()
-		check(err)
+		var err error
+		if watchedDir.watcher, err = fsnotify.NewWatcher(); err != nil {
+			logger.Panic("Could not create new empty watcher")
+		}
 		go eventsWatcher(ctx, watchedDir.watcher, watchedDir.workItems, watchedDir.excludeRegexps)
 		addWatches(watchedDir.watcher, watchedDir.root)
 	}
