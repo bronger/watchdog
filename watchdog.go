@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -148,7 +151,9 @@ func addWatches(watcher *fsnotify.Watcher, root string) {
 	check(err)
 }
 
-func eventsWatcher(watcher *fsnotify.Watcher, workItems chan<- workItem, excludeRegexps []*regexp.Regexp) {
+func eventsWatcher(ctx context.Context,
+	watcher *fsnotify.Watcher, workItems chan<- workItem, excludeRegexps []*regexp.Regexp) {
+	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	for {
 		select {
 		case event := <-watcher.Events:
@@ -200,7 +205,9 @@ func appendWorkItem(workItems []workItem, workItem workItem) []workItem {
 	return append(workItems, workItem)
 }
 
-func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem, gatheringTime time.Duration) {
+func workMarshaller(ctx context.Context,
+	workItems <-chan workItem, workPackages chan<- []workItem, gatheringTime time.Duration) {
+	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	currentWorkItems := make([]workItem, 0, 100)
 	var timer *time.Timer
 	for {
@@ -234,7 +241,8 @@ func workMarshaller(workItems <-chan workItem, workPackages chan<- []workItem, g
 	}
 }
 
-func worker(workPackages <-chan []workItem) {
+func worker(ctx context.Context, workPackages <-chan []workItem) {
+	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	scriptsDir := os.Args[1]
 	for workPackage := range workPackages {
 		logger.Println("WORKER: New work!")
@@ -266,20 +274,35 @@ func worker(workPackages <-chan []workItem) {
 	}
 }
 
+type key int
+
+const wgKey key = 0
+
 func main() {
-	done := make(chan bool)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx = context.WithValue(ctx, wgKey, &wg)
+	defer wg.Wait()
+	go func() {
+		<-sigs
+		logger.Println("Received TERM")
+		cancel()
+	}()
 	var err error
 	watchedDirs, currentDir := readConfiguration()
 	err = os.Chdir(currentDir)
 	check(err)
 	for _, watchedDir := range watchedDirs {
-		go workMarshaller(watchedDir.workItems, watchedDir.workPackages, watchedDir.gatheringTime)
-		go worker(watchedDir.workPackages)
+		wg.Add(3)
+		go workMarshaller(ctx, watchedDir.workItems, watchedDir.workPackages, watchedDir.gatheringTime)
+		go worker(ctx, watchedDir.workPackages)
 		watchedDir.watcher, err = fsnotify.NewWatcher()
 		check(err)
-		go eventsWatcher(watchedDir.watcher, watchedDir.workItems, watchedDir.excludeRegexps)
+		go eventsWatcher(ctx, watchedDir.watcher, watchedDir.workItems, watchedDir.excludeRegexps)
 		logger.Println("Watching", watchedDir.root, "…")
 		addWatches(watchedDir.watcher, watchedDir.root)
 	}
-	<-done
 }
