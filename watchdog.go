@@ -152,17 +152,14 @@ func addWatches(watcher *fsnotify.Watcher, root string) {
 
 func eventsWatcher(ctx context.Context,
 	watcher *fsnotify.Watcher, workItems chan<- workItem, excludeRegexps []*regexp.Regexp) {
-	logger.Println("eventsWatcher: Starting")
-	defer logger.Println("eventsWatcher: Shutting down")
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	for {
 		select {
 		case event := <-watcher.Events:
 			if isExcluded(event.Name, excludeRegexps) {
-				logger.Println("Ignored", event.Name)
+				logger.Println("eventsWatcher: Ignored", event.Name)
 				break
 			}
-			logger.Println(event)
 			newWorkItem := workItem{path: event.Name}
 			if event.Op&fsnotify.Create == fsnotify.Create ||
 				event.Op&fsnotify.Write == fsnotify.Write ||
@@ -170,7 +167,7 @@ func eventsWatcher(ctx context.Context,
 				newWorkItem.eventType = modified
 				info, err := os.Stat(event.Name)
 				if err != nil {
-					logger.Println(err)
+					logger.Printf("eventsWatcher: Error when trying to stat %v: %v", event.Name, err)
 					newWorkItem.nodeType = unknown
 				} else if info.IsDir() {
 					newWorkItem.nodeType = directory
@@ -210,8 +207,6 @@ func appendWorkItem(workItems []workItem, workItem workItem) []workItem {
 
 func workMarshaller(ctx context.Context,
 	workItems <-chan workItem, workPackages chan<- []workItem, agglomerationTime time.Duration) {
-	logger.Println("workMashaller: Starting")
-	defer logger.Println("workMashaller: Shutting down")
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	defer close(workPackages)
 	currentWorkItems := make([]workItem, 0, 100)
@@ -257,30 +252,23 @@ func workMarshaller(ctx context.Context,
 }
 
 func worker(ctx context.Context, workPackages <-chan []workItem) {
-	logger.Println("worker: Starting")
-	defer logger.Println("worker: Shutting down")
 	defer ctx.Value(wgKey).(*sync.WaitGroup).Done()
 	scriptsDir := os.Args[1]
 	for workPackage := range workPackages {
-		logger.Println("WORKER: New work!")
 		var cmd *exec.Cmd
 		if len(workPackage) > 1 {
 			paths := make([]string, 0, len(workPackage))
 			for _, workItem := range workPackage {
 				paths = append(paths, workItem.path)
 			}
-			logger.Println("Calling bulk_sync due to more than one change")
 			cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), longestPrefix(paths))
 		} else {
 			workItem := workPackage[0]
 			if workItem.eventType == deleted {
-				logger.Println("Calling delete")
 				cmd = exec.Command(filepath.Join(scriptsDir, "delete"), workItem.path)
 			} else if workItem.nodeType == file {
-				logger.Println("Calling copy")
 				cmd = exec.Command(filepath.Join(scriptsDir, "copy"), workItem.path)
 			} else {
-				logger.Println("Calling build_sync because non-file was changed")
 				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
 			}
 		}
@@ -289,7 +277,6 @@ func worker(ctx context.Context, workPackages <-chan []workItem) {
 		if err := waitOrStop(ctx, cmd, syscall.SIGTERM, 0); err != nil {
 			logger.Println("External command error: ", err)
 		}
-		logger.Println("WORKER: Finished … waiting for new work")
 	}
 }
 
@@ -312,7 +299,6 @@ func main() {
 
 	go func() {
 		<-sigs
-		logger.Println("Received TERM")
 		cancel()
 	}()
 
@@ -327,7 +313,6 @@ func main() {
 		watchedDir.watcher, err = fsnotify.NewWatcher()
 		check(err)
 		go eventsWatcher(ctx, watchedDir.watcher, watchedDir.workItems, watchedDir.excludeRegexps)
-		logger.Println("Watching", watchedDir.root, "…")
 		addWatches(watchedDir.watcher, watchedDir.root)
 	}
 }
