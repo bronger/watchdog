@@ -53,15 +53,14 @@ number of calls of the synchronisation scripts.
 Synchronisation scripts
 =======================
 
-Position
---------
-
 We need the following three programs: ``bulk_sync``, ``copy``, and ``delete``.
 They must be executables in ``<configuration-directory>``.  There are example
 scripts in this repository.
 
 The single argument passed to the scripts is relative to ``current dir`` from
 the configuration.
+
+The scripts should exit quickly and gracefully when they receive a SIGTERM.
 
 
 ``bulk_rsync``

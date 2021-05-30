@@ -1,3 +1,3 @@
 #!/bin/sh
 
-rsync -a --delete "$1" myserver::myroot/"`dirname "$1"`"
+exec rsync -a --delete "$1" myserver::myroot/"`dirname "$1"`"

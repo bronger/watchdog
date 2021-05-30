@@ -1,3 +1,9 @@
 #!/bin/sh
 
-tar c "$1" | ssh myserver tar --directory /my/root x
+SCRIPT=$(realpath -e "$0")
+SCRIPTPATH=$(dirname "$SCRIPT")
+. "$SCRIPTPATH"/signal_propagation.sh
+
+prep_term
+tar c "$1" | ssh myserver tar --directory /my/root x &
+wait_term
