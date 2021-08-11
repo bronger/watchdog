@@ -122,6 +122,7 @@ func longestPrefix(paths []string) string {
 		for i, component := range components[:minimalLen] {
 			if component != longest[i] {
 				longest = longest[:i]
+				break
 			}
 		}
 		if len(longest) == 0 {
