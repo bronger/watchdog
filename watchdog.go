@@ -174,6 +174,12 @@ func eventsWatcher(ctx context.Context,
 					newWorkItem.nodeType = unknown
 				} else if info.IsDir() {
 					newWorkItem.nodeType = directory
+					if event.Op&fsnotify.Create == fsnotify.Create {
+						if err := watcher.Add(event.Name); err != nil {
+							logger.Printf("Could not add watch of directory %v: %v; ignoring",
+								event.Name, err)
+						}
+					}
 				} else {
 					newWorkItem.nodeType = file
 				}
