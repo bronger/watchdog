@@ -184,7 +184,6 @@ func eventsWatcher(ctx context.Context,
 				newWorkItem.eventType = deleted
 			}
 			workItems <- newWorkItem
-
 		case err := <-watcher.Errors:
 			logger.Printf("eventsWatcher: Error %v (ignoring)", err)
 		case <-ctx.Done():
