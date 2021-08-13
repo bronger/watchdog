@@ -144,7 +144,7 @@ func addWatches(watcher *fsnotify.Watcher, root string) {
 			}
 			if d.IsDir() {
 				if err := watcher.Add(path); err != nil {
-					logger.Printf("Could not add watch of directory %v: %v; ignoring", root, err)
+					logger.Printf("Could not add watch of directory %v: %v; ignoring", path, err)
 				}
 			}
 			return nil
