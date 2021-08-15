@@ -277,6 +277,7 @@ func worker(ctx context.Context, workPackages <-chan []workItem) {
 				cmd = exec.Command(filepath.Join(scriptsDir, "bulk_sync"), workItem.path)
 			}
 		}
+		logger.Println("Start external command", cmd)
 		if err := cmd.Start(); err != nil {
 			logger.Println("Could not start external command:", err)
 		} else if err := waitOrStop(ctx, cmd, syscall.SIGTERM, 0); err != nil {
