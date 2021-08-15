@@ -1,4 +1,4 @@
-module watchdog
+module github.com/bronger/watchdog
 
 go 1.16
 
