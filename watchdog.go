@@ -280,7 +280,7 @@ func worker(ctx context.Context, workPackages <-chan []workItem) {
 		logger.Println("Start external command", cmd)
 		if err := cmd.Start(); err != nil {
 			logger.Println("Could not start external command:", err)
-		} else if err := waitOrStop(ctx, cmd, syscall.SIGTERM, 0); err != nil {
+		} else if err := waitOrStop(ctx, cmd, syscall.SIGTERM, 100*time.Millisecond); err != nil {
 			logger.Println("External command error:", err)
 		}
 	}
