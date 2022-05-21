@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -51,7 +50,7 @@ func readConfiguration() (watchedDirs []watchedDir, currentDir string) {
 		} `yaml:"watched dirs"`
 	}
 	configurationFilePath := filepath.Join(os.Args[1], "configuration.yaml")
-	if data, err := ioutil.ReadFile(configurationFilePath); err != nil {
+	if data, err := os.ReadFile(configurationFilePath); err != nil {
 		logger.Panicf("Configuration file %v could not be read: %v", configurationFilePath, err)
 	} else if err := yaml.Unmarshal(data, &configuration); err != nil ||
 		configuration.CurrentDir == "" ||
