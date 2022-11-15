@@ -15,8 +15,7 @@ import (
 // If cmd does not return before ctx is done, waitOrStop sends it the given interrupt signal.
 // If killDelay is positive, waitOrStop waits that additional period for Wait to return before sending os.Kill.
 //
-// This function is copied from the one added to x/playground/internal in
-// http://golang.org/cl/228438.
+// This function is copied from <https://pkg.go.dev/golang.org/x/build/internal#WaitOrStop>.
 func waitOrStop(ctx context.Context, cmd *exec.Cmd, interrupt os.Signal, killDelay time.Duration) error {
 	if cmd.Process == nil {
 		panic("waitOrStop called with a nil cmd.Process — missing Start call?")
