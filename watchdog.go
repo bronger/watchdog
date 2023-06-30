@@ -36,7 +36,6 @@ type watchedDir struct {
 	workItems         chan workItem
 	workPackages      chan []workItem
 	watcher           *fsnotify.Watcher
-	wg                sync.WaitGroup
 	excludeRegexps    []*regexp.Regexp
 }
 
